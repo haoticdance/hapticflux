@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>HapticFlux RF</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #0b0e14; color: #e6e9ef; font: 15px/1.4 system-ui, sans-serif;
+         min-height: 100dvh; }
+  canvas.gl { position: fixed; inset: 0; z-index: 0; }
+
+  #ui { position: relative; z-index: 1; min-height: 100dvh; display: flex; flex-direction: column; }
+  header { padding: calc(8px + env(safe-area-inset-top)) 12px 8px; display: flex; gap: 8px; align-items: center; }
+  h1 { font-size: 16px; margin: 0; }
+  .grow { flex: 1; }
+  .pill { background: rgba(19,24,36,.9); border: 1px solid #2a3140; border-radius: 10px; padding: 8px 12px; }
+  .muted { color: #8a93a6; font-size: 12px; }
+  b.big { font-size: 22px; font-weight: 600; }
+
+  nav { display: flex; gap: 6px; padding: 0 12px 8px; }
+  nav button { flex: 1; }
+  button { background: #2d7ff9; color: #fff; border: 0; border-radius: 10px; padding: 11px 14px;
+           font-size: 15px; font-family: inherit; }
+  button.ghost { background: rgba(19,24,36,.9); border: 1px solid #2a3140; }
+  button[disabled] { background: #232a36; color: #6d7688; }
+  button.on { background: #1c8f5a; }
+
+  main { padding: 0 12px 12px; display: grid; gap: 12px; align-content: start; }
+  .card { background: rgba(19,24,36,.9); border: 1px solid #1e2430; border-radius: 12px; padding: 12px; }
+  .card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: #8a93a6; margin: 0 0 8px; }
+  canvas#wf { width: 100%; display: block; border-radius: 6px; background: #05070b; image-rendering: pixelated; }
+  #netlist div { padding: 9px 8px; border-radius: 8px; display: flex; gap: 10px; align-items: center;
+                 border-top: 1px solid #1e2430; }
+  #netlist div.sel { background: #1c2a44; border-color: transparent; }
+  #netlist .nm { flex: 1; min-width: 0; }
+  #netlist .nm span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #netlist .rs { font-variant-numeric: tabular-nums; width: 42px; text-align: right; }
+  .bar { height: 8px; background: #1e2430; border-radius: 4px; overflow: hidden; width: 70px; }
+  .bar i { display: block; height: 100%; background: linear-gradient(90deg, #2d7ff9, #5ee1a2); }
+  #log { font: 11px/1.5 ui-monospace, monospace; color: #8a93a6; max-height: 120px; overflow: auto; white-space: pre-wrap; }
+
+  /* режим AR: прячем всё, кроме компактного оверлея */
+  body.ar main, body.ar nav { display: none; }
+  body.ar #arbar { display: flex; }
+  #arbar { display: none; gap: 8px; padding: 12px; margin-top: auto;
+           padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+  body.ar { background: transparent; }
+</style>
+</head>
+<body>
+<div id="ui">
+  <header>
+    <h1>HapticFlux RF</h1>
+    <div class="grow"></div>
+    <div class="pill" style="text-align:right"><b class="big" id="rssi">–</b><div class="muted" id="pts">0 точек</div></div>
+  </header>
+
+  <div style="padding:0 12px 8px"><div class="pill muted" id="stat">не подключено</div></div>
+
+  <nav>
+    <button id="btnBle">Подключить плату</button>
+    <button id="btnAr" class="ghost">В AR</button>
+  </nav>
+
+  <main>
+    <div class="card">
+      <h2>Поток</h2>
+      <div style="display:flex; gap:20px">
+        <div><b class="big" id="busy">–</b><div class="muted">busy / 126</div></div>
+        <div><b class="big" id="rate">–</b><div class="muted">пакетов/с</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Спектр 2.4 ГГц</h2>
+      <canvas id="wf" width="126" height="60"></canvas>
+    </div>
+
+    <div class="card">
+      <h2>Сети — тап выбирает источник для AR</h2>
+      <div id="netlist"></div>
+    </div>
+
+    <div class="card">
+      <h2>Лог</h2>
+      <div id="log"></div>
+    </div>
+  </main>
+
+  <div id="arbar">
+    <button id="btnWave" class="ghost">Волны</button>
+    <button id="btnClear" class="ghost">Сброс</button>
+    <div class="grow"></div>
+    <button id="btnExit" class="ghost">Выйти</button>
+  </div>
+</div>
+
+<script type="module">
+import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.module.min.js';
+
+const UUID = {
+  service:  '7a3f0001-5b2c-4e8d-9f10-c0ffee000001',
+  sample:   '7a3f0002-5b2c-4e8d-9f10-c0ffee000001',
+  spectrum: '7a3f0003-5b2c-4e8d-9f10-c0ffee000001',
+  nets:     '7a3f0004-5b2c-4e8d-9f10-c0ffee000001',
+};
+const $ = id => document.getElementById(id);
+const log = m => { const el = $('log'); el.textContent = (m + '\n' + el.textContent).slice(0, 3000); };
+
+// ============================== BLE ==============================
+let chNets = null, netsMeta = new Map(), latest = new Map(), selected = null;
+let busy = 0, pktCount = 0;
+
+async function connectBle() {
+  if (!navigator.bluetooth) { $('stat').textContent = 'Web Bluetooth недоступен: нужен Chrome на Android + HTTPS'; return; }
+  try {
+    $('btnBle').disabled = true; $('stat').textContent = 'поиск…';
+    const dev = await navigator.bluetooth.requestDevice({ filters: [{ services: [UUID.service] }] });
+    dev.addEventListener('gattserverdisconnected', () => {
+      $('stat').textContent = 'BLE отключён'; $('btnBle').disabled = false;
+      $('btnBle').textContent = 'Переподключить'; chNets = null;
+    });
+    const svc = await (await dev.gatt.connect()).getPrimaryService(UUID.service);
+    const chSample = await svc.getCharacteristic(UUID.sample);
+    const chSpec = await svc.getCharacteristic(UUID.spectrum);
+    chNets = await svc.getCharacteristic(UUID.nets);
+    chSample.addEventListener('characteristicvaluechanged', onSample);
+    chSpec.addEventListener('characteristicvaluechanged', onSpectrum);
+    await chSample.startNotifications();
+    await chSpec.startNotifications();
+    await refreshNets();
+    setInterval(refreshNets, 2000);
+    $('stat').textContent = 'BLE: ' + dev.name;
+    log('connected ' + dev.name);
+  } catch (e) { $('stat').textContent = 'ошибка: ' + e.message; $('btnBle').disabled = false; }
+}
+
+function onSample(ev) {
+  const v = ev.target.value;
+  if (v.getUint8(0) !== 1) return;
+  pktCount++; busy = v.getUint8(1);
+  const n = v.getUint8(3);
+  latest.clear();
+  for (let i = 0; i < n; i++) latest.set(v.getUint8(4 + 2 * i), v.getInt8(5 + 2 * i));
+  if (selected === null && n) selected = v.getUint8(4);
+  const r = latest.get(selected);
+  $('rssi').textContent = (r === undefined) ? '–' : r;
+  $('busy').textContent = busy;
+}
+
+function onSpectrum(ev) {
+  const v = ev.target.value;
+  pushRow(new Uint8Array(v.buffer, v.byteOffset + 1, 16));
+}
+
+async function refreshNets() {
+  if (!chNets) return;
+  try {
+    const arr = JSON.parse(new TextDecoder().decode(await chNets.readValue()));
+    netsMeta = new Map(arr.map(o => [o.i, o]));
+  } catch (e) { /* рваный пакет — ждём следующего */ }
+}
+
+// ---------- водопад ----------
+const wf = $('wf'), wctx = wf.getContext('2d');
+wctx.fillStyle = '#05070b'; wctx.fillRect(0, 0, wf.width, wf.height);
+function pushRow(bits) {
+  wctx.drawImage(wf, 0, 0, wf.width, wf.height - 1, 0, 1, wf.width, wf.height - 1);
+  wctx.fillStyle = '#05070b'; wctx.fillRect(0, 0, wf.width, 1);
+  wctx.fillStyle = '#5ee1a2';
+  for (let ch = 0; ch < 126; ch++) if (bits[ch >> 3] & (1 << (ch & 7))) wctx.fillRect(ch, 0, 1, 1);
+}
+
+// ---------- список сетей ----------
+function renderNets() {
+  const rows = [...latest.entries()].sort((a, b) => b[1] - a[1]);
+  $('netlist').innerHTML = rows.map(([idx, rssi]) => {
+    const m = netsMeta.get(idx) || {};
+    const name = m.s || (m.m ? 'устройство ' + m.m.slice(-5) : 'idx ' + idx);
+    const sub = (m.m || '') + (m.c ? ' · ch ' + m.c : '');
+    const pct = Math.max(0, Math.min(100, (rssi + 100) / 70 * 100));
+    return `<div class="${idx === selected ? 'sel' : ''}" data-idx="${idx}">
+      <div class="nm"><span>${name}</span><span class="muted">${sub}</span></div>
+      <div class="bar"><i style="width:${pct}%"></i></div>
+      <div class="rs">${rssi}</div></div>`;
+  }).join('');
+}
+$('netlist').addEventListener('click', e => {
+  const el = e.target.closest('[data-idx]');
+  if (!el) return;
+  selected = +el.dataset.idx;
+  points.length = 0; estimate = null; rebuildCloud(); renderNets();
+});
+
+// ============================== three.js / AR ==============================
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(devicePixelRatio);
+renderer.setSize(innerWidth, innerHeight);
+renderer.xr.enabled = true;
+renderer.domElement.className = 'gl';
+document.body.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.01, 40);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x223344, 1.2));
+
+const rssiColor = r => new THREE.Color().setHSL(Math.max(0, Math.min(1, (r + 90) / 60)) * 0.33, 0.85, 0.5);
+
+const MAX_PTS = 600, points = [];
+const dot = new THREE.InstancedMesh(
+  new THREE.SphereGeometry(0.045, 10, 8),
+  new THREE.MeshLambertMaterial({ transparent: true, opacity: 0.75 }), MAX_PTS);
+dot.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+dot.count = 0; scene.add(dot);
+
+const tmpM = new THREE.Matrix4();
+function rebuildCloud() {
+  dot.count = points.length;
+  points.forEach((p, i) => {
+    tmpM.makeTranslation(p.pos.x, p.pos.y, p.pos.z);
+    dot.setMatrixAt(i, tmpM);
+    dot.setColorAt(i, rssiColor(p.rssi));
+  });
+  dot.instanceMatrix.needsUpdate = true;
+  if (dot.instanceColor) dot.instanceColor.needsUpdate = true;
+  $('pts').textContent = points.length + ' точек';
+}
+
+let estimate = null, waveOn = false;
+const waves = [0, 1, 2].map(() => {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16),
+    new THREE.MeshBasicMaterial({ color: 0x5ee1a2, transparent: true, opacity: .14,
+                                  side: THREE.DoubleSide, depthWrite: false }));
+  m.visible = false; scene.add(m); return m;
+});
+const srcMark = new THREE.Mesh(new THREE.SphereGeometry(0.09, 16, 12),
+  new THREE.MeshBasicMaterial({ color: 0xffd166 }));
+srcMark.visible = false; scene.add(srcMark);
+
+// Взвешенный центроид: вес ~ амплитуда поля, оценка тянется к сильным точкам.
+function estimateSource() {
+  if (points.length < 12) return null;
+  let w = 0; const acc = new THREE.Vector3();
+  for (const p of points) { const k = Math.pow(10, p.rssi / 20); acc.addScaledVector(p.pos, k); w += k; }
+  return w > 0 ? acc.multiplyScalar(1 / w) : null;
+}
+
+$('btnWave').addEventListener('click', () => {
+  waveOn = !waveOn;
+  $('btnWave').classList.toggle('on', waveOn);
+  if (waveOn) estimate = estimateSource();
+  waves.forEach(w => w.visible = waveOn && !!estimate);
+  srcMark.visible = waveOn && !!estimate;
+  if (waveOn && !estimate) $('stat').textContent = 'мало точек — походи ещё';
+});
+$('btnClear').addEventListener('click', () => { points.length = 0; estimate = null; rebuildCloud(); });
+
+const lastPos = new THREE.Vector3(1e9, 1e9, 1e9);
+function maybeRecord(p) {
+  const r = latest.get(selected);
+  if (r === undefined || p.distanceTo(lastPos) < 0.15) return;
+  lastPos.copy(p);
+  if (points.length >= MAX_PTS) points.shift();
+  points.push({ pos: p.clone(), rssi: r });
+  rebuildCloud();
+}
+
+// --- запуск сессии: одна конфигурация на клик (активация жеста тратится сразу) ---
+const AR_CONFIGS = [
+  ['overlay', () => ({ optionalFeatures: ['local-floor', 'dom-overlay'], domOverlay: { root: $('ui') } })],
+  ['floor',   () => ({ optionalFeatures: ['local-floor'] })],
+  ['bare',    () => undefined],
+];
+let cfgIndex = 0, xrSession = null;
+
+$('btnAr').addEventListener('click', () => {
+  if (!navigator.xr) { $('stat').textContent = 'navigator.xr нет — нужен Chrome на Android по HTTPS'; return; }
+  const [name, mk] = AR_CONFIGS[cfgIndex % AR_CONFIGS.length];
+  const opts = mk();
+  $('stat').textContent = 'запуск AR: ' + name;
+  const p = opts ? navigator.xr.requestSession('immersive-ar', opts)
+                 : navigator.xr.requestSession('immersive-ar');
+  p.then(s => { log('AR OK: ' + name); startSession(s, name); })
+   .catch(err => {
+     log('AR FAIL ' + name + ': ' + err.name);
+     cfgIndex++;
+     const next = AR_CONFIGS[cfgIndex % AR_CONFIGS.length][0];
+     $('stat').textContent = name + ' не принят — нажми ещё раз (' + next + ')';
+     $('btnAr').textContent = 'В AR → ' + next;
+   });
+});
+
+async function startSession(session, cfg) {
+  try {
+    let space = 'local';
+    try { await session.requestReferenceSpace('local-floor'); space = 'local-floor'; } catch (e) {}
+    renderer.xr.setReferenceSpaceType(space);
+    await renderer.xr.setSession(session);
+    xrSession = session;
+    document.body.classList.add('ar');
+    $('stat').textContent = 'AR (' + cfg + '/' + space + ')' + (chNets ? '' : ' — без BLE, точки не пишутся');
+    session.addEventListener('end', () => {
+      xrSession = null; document.body.classList.remove('ar');
+      $('stat').textContent = chNets ? 'BLE подключён' : 'не подключено';
+    });
+  } catch (err) { $('stat').textContent = 'setSession: ' + err.name + ' — ' + err.message; }
+}
+$('btnExit').addEventListener('click', () => xrSession && xrSession.end());
+
+const camPos = new THREE.Vector3();
+let waveT = 0;
+renderer.setAnimationLoop((t, frame) => {
+  if (frame) { renderer.xr.getCamera().getWorldPosition(camPos); maybeRecord(camPos); }
+  if (waveOn && estimate) {
+    srcMark.position.copy(estimate);
+    waveT += 0.012;
+    waves.forEach((w, i) => {
+      const ph = (waveT + i / waves.length) % 1;
+      w.position.copy(estimate);
+      w.scale.setScalar(0.25 + ph * 3.2);
+      w.material.opacity = 0.18 * (1 - ph);
+    });
+  }
+  renderer.render(scene, camera);
+});
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// ---------- диагностика окружения ----------
+(function diag() {
+  const ua = navigator.userAgent;
+  const inApp = /; wv\)/.test(ua) || /(FBAN|FBAV|Instagram|Line|Telegram|WhatsApp|SamsungBrowser|MiuiBrowser|YaBrowser)/i.test(ua);
+  log('secure: ' + isSecureContext + ' | ' + location.protocol + '//' + location.hostname);
+  log('xr: ' + (navigator.xr ? 'есть' : 'НЕТ') + ' | bluetooth: ' + (navigator.bluetooth ? 'есть' : 'НЕТ')
+      + ' | встроенный браузер: ' + (inApp ? 'ДА — открой в Chrome' : 'нет'));
+  if (navigator.xr) navigator.xr.isSessionSupported('immersive-ar')
+    .then(ok => log('isSessionSupported(immersive-ar): ' + ok))
+    .catch(e => log('isSessionSupported: ' + e.name));
+})();
+
+$('btnBle').addEventListener('click', connectBle);
+setInterval(() => { $('rate').textContent = pktCount; pktCount = 0; renderNets(); }, 1000);
+</script>
+</body>
+</html>
