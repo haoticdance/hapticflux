@@ -35,6 +35,8 @@
   canvas#wf { width: 100%; display: block; border-radius: 6px; background: #05070b; image-rendering: pixelated; }
   .scale { display: flex; justify-content: space-between; margin-top: 4px; }
 
+  #netlist { max-height: 46dvh; overflow-y: auto; -webkit-overflow-scrolling: touch;
+             overscroll-behavior: contain; }
   #netlist div.row { padding: 9px 8px; border-radius: 8px; display: flex; gap: 10px; align-items: center;
                      border-top: 1px solid #1e2430; }
   #netlist div.row.sel { background: #1c2a44; border-color: transparent; box-shadow: inset 3px 0 0 #2d7ff9; }
@@ -170,7 +172,7 @@ const I18N = {
     stNoXr: 'navigator.xr нет — нужен Chrome на Android по HTTPS',
     stLost: 'трекинг потерян — веди камеру плавно', stBack: 'трекинг восстановлен',
     stFewPts: 'мало точек — походи ещё', stNoBle: ' — без BLE, точки не пишутся',
-    selNone: 'не выбран', device: 'устройство',
+    selNone: 'не выбран', device: 'устройство', outOfRange: 'вне списка сейчас',
     helpTitle: 'Как это работает',
     help: `
 <p class="lead">Плата слушает радиоэфир 2.4 ГГц двумя способами и отдаёт результат телефону по Bluetooth. Телефон знает, где он находится в комнате, и рисует измерения там, где они были сделаны.</p>
@@ -208,7 +210,7 @@ const I18N = {
     stNoXr: 'navigator.xr missing — needs Chrome on Android over HTTPS',
     stLost: 'tracking lost — move the camera smoothly', stBack: 'tracking recovered',
     stFewPts: 'not enough points — walk around more', stNoBle: ' — no BLE, points are not recorded',
-    selNone: 'none', device: 'device',
+    selNone: 'none', device: 'device', outOfRange: 'not listed right now',
     helpTitle: 'How this works',
     help: `
 <p class="lead">The board listens to the 2.4 GHz band in two ways and streams the result to your phone over Bluetooth. The phone knows where it is in the room and draws each measurement where it was taken.</p>
@@ -260,9 +262,19 @@ const UUID = {
   spectrum: '7a3f0003-5b2c-4e8d-9f10-c0ffee000001',
   nets:     '7a3f0004-5b2c-4e8d-9f10-c0ffee000001',
 };
-let chNets = null, netsMeta = new Map(), latest = new Map(), selected = null;
+let chNets = null, netsMeta = new Map(), latest = new Map();
 let busy = 0, pktCount = 0;
 let listOrder = [];          // стабильный порядок строк; меняется только по кнопке
+
+// Выбор храним по MAC, а не по индексу: индекс — это номер слота в таблице
+// прошивки, и при вытеснении старой записи тот же слот занимает другое
+// устройство. Индекс каждый раз разрешаем заново через таблицу nets.
+let selMac = null, selName = '';    // selName — последнее известное имя, чтобы не мигало
+function selIdx() {
+  if (!selMac) return null;
+  for (const [idx, m] of netsMeta) if (m.m === selMac) return idx;
+  return null;                 // сеть временно вне списка — выбор сохраняем
+}
 
 const log = m => { const el = $('log'); el.textContent = (m + '\n' + el.textContent).slice(0, 3000); };
 
@@ -298,7 +310,6 @@ function onSample(ev) {
   const n = v.getUint8(3);
   latest.clear();
   for (let i = 0; i < n; i++) latest.set(v.getUint8(4 + 2 * i), v.getInt8(5 + 2 * i));
-  if (selected === null && n) selected = v.getUint8(4);       // первый раз — сильнейший
   // новые idx дописываем в конец, порядок существующих не трогаем
   for (const idx of latest.keys()) if (!listOrder.includes(idx)) listOrder.push(idx);
   $('busy').textContent = busy;
@@ -315,6 +326,15 @@ async function refreshNets() {
   try {
     const arr = JSON.parse(new TextDecoder().decode(await chNets.readValue()));
     netsMeta = new Map(arr.map(o => [o.i, o]));
+    // первый выбор делаем только когда есть MAC — иначе привязываться не к чему
+    if (!selMac) {
+      let best = null, bestR = -127;
+      for (const [idx, r] of latest) {
+        const m = netsMeta.get(idx);
+        if (m && m.m && r > bestR) { best = m.m; bestR = r; }
+      }
+      if (best) { selMac = best; renderSelected(); renderNets(); }
+    }
   } catch (e) { /* рваный пакет — ждём следующего */ }
 }
 
@@ -324,14 +344,17 @@ const netName = idx => {
 };
 
 function renderSelected() {
-  const r = selected === null ? undefined : latest.get(selected);
+  const idx = selIdx();
+  const r = idx === null ? undefined : latest.get(idx);
   $('rssi').textContent = (r === undefined) ? '–' : r;
   $('arRssi').textContent = (r === undefined) ? '–' : r;
-  const nm = selected === null ? t('selNone') : netName(selected);
+  if (idx !== null) selName = netName(idx);
+  const nm = !selMac ? t('selNone') : (selName || selMac);
   $('selName').textContent = nm;
   $('arName').textContent = nm;
-  const m = (selected !== null && netsMeta.get(selected)) || {};
-  $('selSub').textContent = (m.m || '') + (m.c ? ' · ch ' + m.c : '');
+  const m = (idx !== null && netsMeta.get(idx)) || {};
+  const sub = selMac ? (selMac + (m.c ? ' · ch ' + m.c : '') + (r === undefined ? ' · ' + t('outOfRange') : '')) : '';
+  $('selSub').textContent = sub;
 }
 
 // ---------- водопад ----------
@@ -352,7 +375,8 @@ function renderNets() {
     const m = netsMeta.get(idx) || {};
     const sub = (m.m || '') + (m.c ? ' · ch ' + m.c : '');
     const pct = Math.max(0, Math.min(100, (rssi + 100) / 70 * 100));
-    return `<div class="row ${idx === selected ? 'sel' : ''}" data-idx="${idx}">
+    const isSel = !!(m.m && m.m === selMac);
+    return `<div class="row ${isSel ? 'sel' : ''}" data-mac="${m.m || ''}" data-idx="${idx}">
       <div class="nm"><span>${netName(idx)}</span><span class="muted">${sub}</span></div>
       <div class="bar"><i style="width:${pct}%"></i></div>
       <div class="rs mono">${rssi}</div></div>`;
@@ -361,9 +385,11 @@ function renderNets() {
 $('netlist').addEventListener('click', e => {
   const el = e.target.closest('[data-idx]');
   if (!el) return;
-  const idx = +el.dataset.idx;
-  if (idx === selected) return;
-  selected = idx;
+  const mac = el.dataset.mac;
+  if (!mac) return;                       // MAC ещё не пришёл — выбирать не к чему
+  if (mac === selMac) return;
+  selMac = mac;
+  selName = netName(+el.dataset.idx);
   points.length = 0; estimate = null; rebuildCloud();
   renderSelected(); renderNets();
 });
@@ -497,7 +523,8 @@ $('btnClear').addEventListener('click', () => { points.length = 0; estimate = nu
 
 const lastPos = new THREE.Vector3(1e9, 1e9, 1e9);
 function maybeRecord(pWorld) {
-  const r = selected === null ? undefined : latest.get(selected);
+  const idx = selIdx();
+  const r = idx === null ? undefined : latest.get(idx);
   if (r === undefined || pWorld.distanceTo(lastPos) < STEP_M) return;
   lastPos.copy(pWorld);
   const local = world.worldToLocal(pWorld.clone());
