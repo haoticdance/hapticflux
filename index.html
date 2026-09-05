@@ -206,38 +206,106 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.01, 40);
 scene.add(new THREE.HemisphereLight(0xffffff, 0x223344, 1.2));
 
-const rssiColor = r => new THREE.Color().setHSL(Math.max(0, Math.min(1, (r + 90) / 60)) * 0.33, 0.85, 0.5);
+const rssiColor = r => new THREE.Color().setHSL(Math.max(0, Math.min(1, (r + 90) / 60)) * 0.33, 0.9, 0.55);
 
-const MAX_PTS = 600, points = [];
-const dot = new THREE.InstancedMesh(
-  new THREE.SphereGeometry(0.045, 10, 8),
-  new THREE.MeshLambertMaterial({ transparent: true, opacity: 0.75 }), MAX_PTS);
-dot.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-dot.count = 0; scene.add(dot);
+// Всё содержимое висит в этой группе. Её поза берётся от XR-якоря,
+// поэтому при перелокализации ARCore облако остаётся на месте в комнате.
+const world = new THREE.Group();
+world.matrixAutoUpdate = false;
+scene.add(world);
 
-const tmpM = new THREE.Matrix4();
+// --- мягкая «дымка»: спрайты с радиальным градиентом, аддитивное смешивание ---
+function puffTexture() {
+  const s = 128, c = document.createElement('canvas');
+  c.width = c.height = s;
+  const g = c.getContext('2d').createRadialGradient(s/2, s/2, 0, s/2, s/2, s/2);
+  g.addColorStop(0.0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.25, 'rgba(255,255,255,0.45)');
+  g.addColorStop(0.6, 'rgba(255,255,255,0.10)');
+  g.addColorStop(1.0, 'rgba(255,255,255,0)');
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, s, s);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+const MAX_PTS = 500;      // измерений
+const PUFFS = 3;          // облачков на измерение — даёт объём вместо горошины
+const points = [];        // {pos: Vector3 (в координатах world), rssi}
+
+const hazeGeo = new THREE.BufferGeometry();
+const hazePos = new Float32Array(MAX_PTS * PUFFS * 3);
+const hazeCol = new Float32Array(MAX_PTS * PUFFS * 3);
+const hazeSize = new Float32Array(MAX_PTS * PUFFS);
+hazeGeo.setAttribute('position', new THREE.BufferAttribute(hazePos, 3));
+hazeGeo.setAttribute('color', new THREE.BufferAttribute(hazeCol, 3));
+hazeGeo.setAttribute('size', new THREE.BufferAttribute(hazeSize, 1));
+hazeGeo.setDrawRange(0, 0);
+
+// Свой шейдер: нужен разный размер у каждого спрайта (у PointsMaterial он общий).
+const hazeMat = new THREE.ShaderMaterial({
+  uniforms: { map: { value: puffTexture() }, uOpacity: { value: 0.5 } },
+  vertexShader: `
+    attribute float size;
+    varying vec3 vColor;
+    void main() {
+      vColor = color;
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      gl_PointSize = size * 300.0 / max(-mv.z, 0.1);
+      gl_Position = projectionMatrix * mv;
+    }`,
+  fragmentShader: `
+    uniform sampler2D map;
+    uniform float uOpacity;
+    varying vec3 vColor;
+    void main() {
+      vec4 t = texture2D(map, gl_PointCoord);
+      gl_FragColor = vec4(vColor * t.a, t.a * uOpacity);
+    }`,
+  transparent: true,
+  vertexColors: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+});
+const haze = new THREE.Points(hazeGeo, hazeMat);
+haze.frustumCulled = false;
+world.add(haze);
+
+const _c = new THREE.Color();
 function rebuildCloud() {
-  dot.count = points.length;
-  points.forEach((p, i) => {
-    tmpM.makeTranslation(p.pos.x, p.pos.y, p.pos.z);
-    dot.setMatrixAt(i, tmpM);
-    dot.setColorAt(i, rssiColor(p.rssi));
-  });
-  dot.instanceMatrix.needsUpdate = true;
-  if (dot.instanceColor) dot.instanceColor.needsUpdate = true;
+  let k = 0;
+  for (const p of points) {
+    _c.copy(rssiColor(p.rssi));
+    // сильный сигнал — крупнее и плотнее, слабый — мелкая редкая дымка
+    const strength = Math.max(0, Math.min(1, (p.rssi + 90) / 60));
+    for (let j = 0; j < PUFFS; j++) {
+      hazePos[k * 3]     = p.pos.x + p.jit[j * 3];
+      hazePos[k * 3 + 1] = p.pos.y + p.jit[j * 3 + 1];
+      hazePos[k * 3 + 2] = p.pos.z + p.jit[j * 3 + 2];
+      hazeCol[k * 3]     = _c.r; hazeCol[k * 3 + 1] = _c.g; hazeCol[k * 3 + 2] = _c.b;
+      hazeSize[k] = 0.22 + strength * 0.5;
+      k++;
+    }
+  }
+  hazeGeo.setDrawRange(0, k);
+  hazeGeo.attributes.position.needsUpdate = true;
+  hazeGeo.attributes.color.needsUpdate = true;
+  hazeGeo.attributes.size.needsUpdate = true;
   $('pts').textContent = points.length + ' точек';
 }
 
 let estimate = null, waveOn = false;
-const waves = [0, 1, 2].map(() => {
-  const m = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16),
-    new THREE.MeshBasicMaterial({ color: 0x5ee1a2, transparent: true, opacity: .14,
-                                  side: THREE.DoubleSide, depthWrite: false }));
-  m.visible = false; scene.add(m); return m;
+const waves = [0, 1, 2, 3].map(() => {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 20),
+    new THREE.MeshBasicMaterial({ color: 0x7fe3ff, transparent: true, opacity: .1,
+                                  side: THREE.BackSide, depthWrite: false,
+                                  blending: THREE.AdditiveBlending }));
+  m.visible = false; world.add(m); return m;
 });
-const srcMark = new THREE.Mesh(new THREE.SphereGeometry(0.09, 16, 12),
-  new THREE.MeshBasicMaterial({ color: 0xffd166 }));
-srcMark.visible = false; scene.add(srcMark);
+const srcMark = new THREE.Mesh(new THREE.SphereGeometry(0.07, 16, 12),
+  new THREE.MeshBasicMaterial({ color: 0xffd166, transparent: true, opacity: .9 }));
+srcMark.visible = false; world.add(srcMark);
 
 // Взвешенный центроид: вес ~ амплитуда поля, оценка тянется к сильным точкам.
 function estimateSource() {
@@ -258,22 +326,27 @@ $('btnWave').addEventListener('click', () => {
 $('btnClear').addEventListener('click', () => { points.length = 0; estimate = null; rebuildCloud(); });
 
 const lastPos = new THREE.Vector3(1e9, 1e9, 1e9);
-function maybeRecord(p) {
+function maybeRecord(pWorld) {
   const r = latest.get(selected);
-  if (r === undefined || p.distanceTo(lastPos) < 0.15) return;
-  lastPos.copy(p);
+  if (r === undefined || pWorld.distanceTo(lastPos) < 0.15) return;
+  lastPos.copy(pWorld);
+  // в локальные координаты группы-якоря, чтобы точка пережила перелокализацию
+  const local = world.worldToLocal(pWorld.clone());
+  const jit = new Float32Array(PUFFS * 3);
+  for (let i = 0; i < PUFFS * 3; i++) jit[i] = (Math.random() - 0.5) * 0.14;
   if (points.length >= MAX_PTS) points.shift();
-  points.push({ pos: p.clone(), rssi: r });
+  points.push({ pos: local, rssi: r, jit });
   rebuildCloud();
 }
 
 // --- запуск сессии: одна конфигурация на клик (активация жеста тратится сразу) ---
 const AR_CONFIGS = [
-  ['overlay', () => ({ optionalFeatures: ['local-floor', 'dom-overlay'], domOverlay: { root: $('ui') } })],
-  ['floor',   () => ({ optionalFeatures: ['local-floor'] })],
+  ['overlay', () => ({ optionalFeatures: ['local-floor', 'dom-overlay', 'anchors'], domOverlay: { root: $('ui') } })],
+  ['floor',   () => ({ optionalFeatures: ['local-floor', 'anchors'] })],
   ['bare',    () => undefined],
 ];
 let cfgIndex = 0, xrSession = null;
+let anchor = null, anchorPending = false;
 
 $('btnAr').addEventListener('click', () => {
   if (!navigator.xr) { $('stat').textContent = 'navigator.xr нет — нужен Chrome на Android по HTTPS'; return; }
@@ -302,7 +375,8 @@ async function startSession(session, cfg) {
     document.body.classList.add('ar');
     $('stat').textContent = 'AR (' + cfg + '/' + space + ')' + (chNets ? '' : ' — без BLE, точки не пишутся');
     session.addEventListener('end', () => {
-      xrSession = null; document.body.classList.remove('ar');
+      xrSession = null; anchor = null; anchorPending = false;
+      document.body.classList.remove('ar');
       $('stat').textContent = chNets ? 'BLE подключён' : 'не подключено';
     });
   } catch (err) { $('stat').textContent = 'setSession: ' + err.name + ' — ' + err.message; }
@@ -310,17 +384,50 @@ async function startSession(session, cfg) {
 $('btnExit').addEventListener('click', () => xrSession && xrSession.end());
 
 const camPos = new THREE.Vector3();
-let waveT = 0;
+const anchorMat = new THREE.Matrix4();
+let waveT = 0, lostShown = false;
+
 renderer.setAnimationLoop((t, frame) => {
-  if (frame) { renderer.xr.getCamera().getWorldPosition(camPos); maybeRecord(camPos); }
+  if (frame) {
+    const refSpace = renderer.xr.getReferenceSpace();
+    const viewerPose = frame.getViewerPose(refSpace);
+
+    // Якорь: создаём один раз, дальше каждый кадр берём его позу.
+    // ARCore корректирует её при перелокализации — облако не уплывает.
+    if (!anchor && !anchorPending && frame.createAnchor && viewerPose) {
+      anchorPending = true;
+      frame.createAnchor(new XRRigidTransform(), refSpace)
+        .then(a => { anchor = a; log('anchor: ok'); })
+        .catch(e => { log('anchor: недоступен (' + e.name + ') — облако может смещаться'); });
+    }
+    if (anchor) {
+      const ap = frame.getPose(anchor.anchorSpace, refSpace);
+      if (ap) {
+        anchorMat.fromArray(ap.transform.matrix);
+        world.matrix.copy(anchorMat);
+        world.matrixWorldNeedsUpdate = true;   // matrixAutoUpdate выключен — обновляем сами
+      }
+    }
+
+    // Трекинг потерян — не пишем мусорные точки.
+    if (viewerPose) {
+      if (lostShown) { $('stat').textContent = 'трекинг восстановлен'; lostShown = false; }
+      renderer.xr.getCamera().getWorldPosition(camPos);
+      maybeRecord(camPos);
+    } else if (!lostShown) {
+      $('stat').textContent = 'трекинг потерян — веди камеру плавно';
+      lostShown = true;
+    }
+  }
+
   if (waveOn && estimate) {
     srcMark.position.copy(estimate);
-    waveT += 0.012;
+    waveT += 0.008;
     waves.forEach((w, i) => {
       const ph = (waveT + i / waves.length) % 1;
       w.position.copy(estimate);
-      w.scale.setScalar(0.25 + ph * 3.2);
-      w.material.opacity = 0.18 * (1 - ph);
+      w.scale.setScalar(0.2 + ph * 3.6);
+      w.material.opacity = 0.13 * Math.sin(Math.PI * ph);   // плавное появление и угасание
     });
   }
   renderer.render(scene, camera);
