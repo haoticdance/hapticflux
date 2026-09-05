@@ -7,46 +7,63 @@
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
-  body { margin: 0; background: #0b0e14; color: #e6e9ef; font: 15px/1.4 system-ui, sans-serif;
-         min-height: 100dvh; }
+  body { margin: 0; background: #0b0e14; color: #e6e9ef; font: 15px/1.45 system-ui, sans-serif; min-height: 100dvh; }
   canvas.gl { position: fixed; inset: 0; z-index: 0; }
 
   #ui { position: relative; z-index: 1; min-height: 100dvh; display: flex; flex-direction: column; }
   header { padding: calc(8px + env(safe-area-inset-top)) 12px 8px; display: flex; gap: 8px; align-items: center; }
   h1 { font-size: 16px; margin: 0; }
   .grow { flex: 1; }
-  .pill { background: rgba(19,24,36,.9); border: 1px solid #2a3140; border-radius: 10px; padding: 8px 12px; }
+  .pill { background: rgba(19,24,36,.92); border: 1px solid #2a3140; border-radius: 10px; padding: 8px 12px; }
   .muted { color: #8a93a6; font-size: 12px; }
   b.big { font-size: 22px; font-weight: 600; }
+  .mono { font-variant-numeric: tabular-nums; }
 
   nav { display: flex; gap: 6px; padding: 0 12px 8px; }
   nav button { flex: 1; }
   button { background: #2d7ff9; color: #fff; border: 0; border-radius: 10px; padding: 11px 14px;
            font-size: 15px; font-family: inherit; }
-  button.ghost { background: rgba(19,24,36,.9); border: 1px solid #2a3140; }
+  button.ghost { background: rgba(19,24,36,.92); border: 1px solid #2a3140; }
+  button.small { padding: 6px 10px; font-size: 13px; }
   button[disabled] { background: #232a36; color: #6d7688; }
   button.on { background: #1c8f5a; }
 
-  main { padding: 0 12px 12px; display: grid; gap: 12px; align-content: start; }
-  .card { background: rgba(19,24,36,.9); border: 1px solid #1e2430; border-radius: 12px; padding: 12px; }
-  .card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: #8a93a6; margin: 0 0 8px; }
+  main { padding: 0 12px 16px; display: grid; gap: 12px; align-content: start; }
+  .card { background: rgba(19,24,36,.92); border: 1px solid #1e2430; border-radius: 12px; padding: 12px; }
+  .card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: #8a93a6;
+             margin: 0 0 8px; display: flex; align-items: center; gap: 8px; }
   canvas#wf { width: 100%; display: block; border-radius: 6px; background: #05070b; image-rendering: pixelated; }
-  #netlist div { padding: 9px 8px; border-radius: 8px; display: flex; gap: 10px; align-items: center;
-                 border-top: 1px solid #1e2430; }
-  #netlist div.sel { background: #1c2a44; border-color: transparent; }
+  .scale { display: flex; justify-content: space-between; margin-top: 4px; }
+
+  #netlist div.row { padding: 9px 8px; border-radius: 8px; display: flex; gap: 10px; align-items: center;
+                     border-top: 1px solid #1e2430; }
+  #netlist div.row.sel { background: #1c2a44; border-color: transparent; box-shadow: inset 3px 0 0 #2d7ff9; }
   #netlist .nm { flex: 1; min-width: 0; }
   #netlist .nm span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #netlist .rs { font-variant-numeric: tabular-nums; width: 42px; text-align: right; }
-  .bar { height: 8px; background: #1e2430; border-radius: 4px; overflow: hidden; width: 70px; }
+  #netlist .rs { width: 42px; text-align: right; }
+  .bar { height: 8px; background: #1e2430; border-radius: 4px; overflow: hidden; width: 64px; flex: none; }
   .bar i { display: block; height: 100%; background: linear-gradient(90deg, #2d7ff9, #5ee1a2); }
-  #log { font: 11px/1.5 ui-monospace, monospace; color: #8a93a6; max-height: 120px; overflow: auto; white-space: pre-wrap; }
+  #log { font: 11px/1.5 ui-monospace, monospace; color: #8a93a6; max-height: 110px; overflow: auto; white-space: pre-wrap; }
 
-  /* режим AR: прячем всё, кроме компактного оверлея */
-  body.ar main, body.ar nav { display: none; }
+  /* режим AR */
+  body.ar main, body.ar nav, body.ar #statwrap { display: none; }
   body.ar #arbar { display: flex; }
-  #arbar { display: none; gap: 8px; padding: 12px; margin-top: auto;
-           padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
   body.ar { background: transparent; }
+  #arbar { display: none; gap: 8px; padding: 12px; margin-top: auto;
+           padding-bottom: calc(12px + env(safe-area-inset-bottom)); align-items: flex-end; }
+  #arsel { display: none; }
+  body.ar #arsel { display: block; margin: 0 12px; }
+
+  /* справка */
+  #help { position: fixed; inset: 0; z-index: 5; background: rgba(6,8,13,.96); overflow: auto;
+          padding: calc(16px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));
+          display: none; }
+  #help.open { display: block; }
+  #help h3 { font-size: 15px; margin: 20px 0 6px; }
+  #help h3:first-of-type { margin-top: 12px; }
+  #help p { margin: 6px 0; color: #c3cad6; }
+  #help .lead { color: #e6e9ef; }
+  .swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 4px; }
 </style>
 </head>
 <body>
@@ -54,73 +71,209 @@
   <header>
     <h1>HapticFlux RF</h1>
     <div class="grow"></div>
-    <div class="pill" style="text-align:right"><b class="big" id="rssi">–</b><div class="muted" id="pts">0 точек</div></div>
+    <button id="btnLang" class="ghost small">EN</button>
+    <button id="btnHelp" class="ghost small">?</button>
   </header>
 
-  <div style="padding:0 12px 8px"><div class="pill muted" id="stat">не подключено</div></div>
+  <div id="statwrap" style="padding:0 12px 8px"><div class="pill muted" id="stat"></div></div>
 
   <nav>
-    <button id="btnBle">Подключить плату</button>
-    <button id="btnAr" class="ghost">В AR</button>
+    <button id="btnBle"></button>
+    <button id="btnAr" class="ghost"></button>
   </nav>
 
   <main>
     <div class="card">
-      <h2>Поток</h2>
-      <div style="display:flex; gap:20px">
-        <div><b class="big" id="busy">–</b><div class="muted">busy / 126</div></div>
-        <div><b class="big" id="rate">–</b><div class="muted">пакетов/с</div></div>
+      <h2 data-t="hSelected"></h2>
+      <div style="display:flex; gap:16px; align-items:baseline">
+        <div style="flex:1; min-width:0">
+          <div id="selName" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap"></div>
+          <div class="muted" id="selSub"></div>
+        </div>
+        <div style="text-align:right">
+          <b class="big mono" id="rssi">–</b>
+          <div class="muted">dBm</div>
+        </div>
       </div>
     </div>
 
     <div class="card">
-      <h2>Спектр 2.4 ГГц</h2>
-      <canvas id="wf" width="126" height="60"></canvas>
+      <h2 data-t="hStream"></h2>
+      <div style="display:flex; gap:20px">
+        <div><b class="big mono" id="busy">–</b><div class="muted" data-t="lBusy"></div></div>
+        <div><b class="big mono" id="rate">–</b><div class="muted" data-t="lRate"></div></div>
+        <div><b class="big mono" id="pts">0</b><div class="muted" data-t="lPts"></div></div>
+      </div>
     </div>
 
     <div class="card">
-      <h2>Сети — тап выбирает источник для AR</h2>
+      <h2 data-t="hSpectrum"></h2>
+      <canvas id="wf" width="126" height="60"></canvas>
+      <div class="scale muted"><span>2400</span><span>2450</span><span>2500 MHz</span></div>
+    </div>
+
+    <div class="card">
+      <h2>
+        <span data-t="hNets" class="grow"></span>
+        <button id="btnSort" class="ghost small" data-t="bSort"></button>
+      </h2>
       <div id="netlist"></div>
     </div>
 
     <div class="card">
-      <h2>Лог</h2>
+      <h2 data-t="hLog"></h2>
       <div id="log"></div>
     </div>
   </main>
 
-  <div id="arbar">
-    <button id="btnWave" class="ghost">Волны</button>
-    <button id="btnClear" class="ghost">Сброс</button>
-    <div class="grow"></div>
-    <button id="btnExit" class="ghost">Выйти</button>
+  <div class="pill" id="arsel">
+    <div class="muted" data-t="lTracking"></div>
+    <div style="display:flex; gap:12px; align-items:baseline">
+      <div id="arName" class="grow" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap"></div>
+      <b class="big mono" id="arRssi">–</b>
+      <span class="muted mono"><span id="arPts">0</span> <span data-t="lPtsShort"></span></span>
+    </div>
   </div>
+
+  <div id="arbar">
+    <button id="btnWave" class="ghost" data-t="bWaves"></button>
+    <button id="btnClear" class="ghost" data-t="bClear"></button>
+    <div class="grow"></div>
+    <button id="btnExit" class="ghost" data-t="bExit"></button>
+  </div>
+</div>
+
+<div id="help">
+  <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px">
+    <b style="font-size:17px" data-t="helpTitle"></b>
+    <div class="grow"></div>
+    <button id="btnHelpClose" class="ghost small" data-t="bClose"></button>
+  </div>
+  <div id="helpBody"></div>
 </div>
 
 <script type="module">
 import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.module.min.js';
 
+const $ = id => document.getElementById(id);
+
+// ============================== i18n ==============================
+const I18N = {
+  ru: {
+    hSelected: 'Выбранный источник', hStream: 'Поток', hSpectrum: 'Спектр 2.4 ГГц',
+    hNets: 'Сети — тап выбирает', hLog: 'Лог',
+    lBusy: 'занято / 126', lRate: 'пакетов/с', lPts: 'точек', lPtsShort: 'точек',
+    lTracking: 'Картографируем:',
+    bConnect: 'Подключить плату', bReconnect: 'Переподключить', bAr: 'В AR',
+    bWaves: 'Волны', bClear: 'Сброс', bExit: 'Выйти', bSort: 'По сигналу', bClose: 'Закрыть',
+    stIdle: 'не подключено', stSearch: 'поиск…', stNoBt: 'Web Bluetooth недоступен: нужен Chrome на Android и HTTPS',
+    stNoXr: 'navigator.xr нет — нужен Chrome на Android по HTTPS',
+    stLost: 'трекинг потерян — веди камеру плавно', stBack: 'трекинг восстановлен',
+    stFewPts: 'мало точек — походи ещё', stNoBle: ' — без BLE, точки не пишутся',
+    selNone: 'не выбран', device: 'устройство',
+    helpTitle: 'Как это работает',
+    help: `
+<p class="lead">Плата слушает радиоэфир 2.4 ГГц двумя способами и отдаёт результат телефону по Bluetooth. Телефон знает, где он находится в комнате, и рисует измерения там, где они были сделаны.</p>
+
+<h3>Что такое dBm и RSSI</h3>
+<p>RSSI — сила принимаемого сигнала в дБм. Шкала отрицательная и логарифмическая: <b>−30</b> очень близко, <b>−50</b> отлично, <b>−70</b> нормально, <b>−85</b> на грани. Разница в 6 дБм — это примерно вдвое дальше от источника. Стена или тело человека съедают 5–15 дБм.</p>
+
+<h3>Спектр (водопад)</h3>
+<p>Модуль NRF24 за 120 мс пробегает 126 полос по 1 МГц от 2400 до 2525 МГц и для каждой отвечает, есть ли там сигнал сильнее −64 дБм. Каждая новая строка добавляется сверху. Число «занято» — сколько полос было активно в последнем проходе. Проверить легко: включи микроволновку — в правой половине появится широкая полоса.</p>
+
+<h3>Сети и устройства</h3>
+<p>WiFi-чип платы слушает все пакеты вокруг, перебирая каналы 1–13. Записи с именем — роутеры, они объявляют себя маячками. Записи без имени — устройства: телефоны, ноутбуки, телевизор. Их видно по MAC-адресу передатчика.</p>
+
+<h3>Что рисуется в AR</h3>
+<p>Только <b>выбранная сеть</b> — та, что подсвечена в списке и показана в шапке AR. Смена выбора очищает облако: измерения разных источников несопоставимы.</p>
+<p>Новая точка записывается, когда ты сместился на <b>15 см</b> от предыдущей. Хранится до 500 точек, дальше самые старые вытесняются. Цвет: <span class="swatch" style="background:#e14b4b"></span>слабо (−90) → <span class="swatch" style="background:#e1d24b"></span>средне → <span class="swatch" style="background:#3ecf6e"></span>сильно (−30). Чем сильнее сигнал, тем крупнее и плотнее дымка.</p>
+
+<h3>Почему нельзя увидеть саму волну</h3>
+<p>На 2.4 ГГц длина волны 12.5 см, а колебания идут 2.4 миллиарда раз в секунду — ни один такой датчик не покажет «рябь». Антенна всенаправленная: она измеряет силу поля в точке, но не направление. Поэтому мы картографируем поле, проходя сквозь него, — как искать тёплое место ладонью с закрытыми глазами.</p>
+
+<h3>Кнопка «Волны»</h3>
+<p>По накопленным точкам оценивается вероятное положение источника (взвешенный центроид: чем сильнее сигнал, тем больше вес). Жёлтый шарик — оценка, сферы вокруг — иллюстрация распространения. Это <b>интерпретация, а не измерение</b>: если обойти источник со всех сторон, оценка близка к правде; если ходить с одной стороны или мешают отражения от стен, она смещается.</p>
+
+<h3>Практика</h3>
+<p>Примотай плату к телефону антенной вверх и питай от повербанка — иначе телефон и датчик будут в разных местах, и картинка потеряет смысл. Веди камеру плавно: при потере трекинга запись приостанавливается.</p>`,
+  },
+  en: {
+    hSelected: 'Selected source', hStream: 'Live', hSpectrum: '2.4 GHz spectrum',
+    hNets: 'Networks — tap to select', hLog: 'Log',
+    lBusy: 'busy / 126', lRate: 'packets/s', lPts: 'points', lPtsShort: 'pts',
+    lTracking: 'Mapping:',
+    bConnect: 'Connect board', bReconnect: 'Reconnect', bAr: 'Enter AR',
+    bWaves: 'Waves', bClear: 'Clear', bExit: 'Exit', bSort: 'By signal', bClose: 'Close',
+    stIdle: 'not connected', stSearch: 'scanning…', stNoBt: 'Web Bluetooth unavailable: needs Chrome on Android over HTTPS',
+    stNoXr: 'navigator.xr missing — needs Chrome on Android over HTTPS',
+    stLost: 'tracking lost — move the camera smoothly', stBack: 'tracking recovered',
+    stFewPts: 'not enough points — walk around more', stNoBle: ' — no BLE, points are not recorded',
+    selNone: 'none', device: 'device',
+    helpTitle: 'How this works',
+    help: `
+<p class="lead">The board listens to the 2.4 GHz band in two ways and streams the result to your phone over Bluetooth. The phone knows where it is in the room and draws each measurement where it was taken.</p>
+
+<h3>dBm and RSSI</h3>
+<p>RSSI is received signal strength in dBm. The scale is negative and logarithmic: <b>−30</b> very close, <b>−50</b> excellent, <b>−70</b> fine, <b>−85</b> marginal. Six dBm is roughly twice the distance. A wall or a human body costs 5–15 dBm.</p>
+
+<h3>Spectrum (waterfall)</h3>
+<p>The NRF24 module sweeps 126 one-MHz slices from 2400 to 2525 MHz every 120 ms and reports whether each carries a signal above −64 dBm. Each new row appears on top. "Busy" counts active slices in the last sweep. Easy test: run a microwave oven and watch a wide smear appear in the right half.</p>
+
+<h3>Networks and devices</h3>
+<p>The board's WiFi chip sniffs every packet around it, hopping across channels 1–13. Named entries are routers announcing themselves via beacons. Unnamed entries are devices — phones, laptops, a TV — identified by the transmitter's MAC address.</p>
+
+<h3>What AR draws</h3>
+<p>Only the <b>selected network</b> — highlighted in the list and shown in the AR header. Changing the selection clears the cloud: measurements of different sources aren't comparable.</p>
+<p>A new point is recorded once you move <b>15 cm</b> from the previous one. Up to 500 points are kept, then the oldest are dropped. Color: <span class="swatch" style="background:#e14b4b"></span>weak (−90) → <span class="swatch" style="background:#e1d24b"></span>medium → <span class="swatch" style="background:#3ecf6e"></span>strong (−30). Stronger signal means larger, denser haze.</p>
+
+<h3>Why you can't see the wave itself</h3>
+<p>At 2.4 GHz the wavelength is 12.5 cm and it oscillates 2.4 billion times a second — no sensor like this shows ripples. The antenna is omnidirectional: it measures field strength at a point, not direction. So we map the field by walking through it — like finding a warm spot with your palm, eyes closed.</p>
+
+<h3>The "Waves" button</h3>
+<p>From the collected points it estimates where the source probably is (a weighted centroid: stronger signal, heavier weight). The yellow dot is that estimate; the spheres illustrate propagation. This is an <b>interpretation, not a measurement</b>: circle the source and the estimate lands close; stay on one side, or let wall reflections dominate, and it drifts.</p>
+
+<h3>Practical notes</h3>
+<p>Strap the board to your phone, antenna up, powered from a power bank — otherwise phone and sensor are in different places and the picture is meaningless. Move the camera smoothly: recording pauses whenever tracking is lost.</p>`,
+  },
+};
+let lang = (navigator.language || '').startsWith('ru') ? 'ru' : 'en';
+const t = k => I18N[lang][k];
+
+function applyLang() {
+  document.documentElement.lang = lang;
+  document.querySelectorAll('[data-t]').forEach(el => el.textContent = t(el.dataset.t));
+  $('btnLang').textContent = lang === 'ru' ? 'EN' : 'RU';
+  $('btnBle').textContent = chNets ? t('bReconnect') : t('bConnect');
+  $('btnAr').textContent = t('bAr');
+  $('helpBody').innerHTML = t('help');
+  if (!chNets) $('stat').textContent = t('stIdle');
+  renderSelected(); renderNets();
+}
+$('btnLang').addEventListener('click', () => { lang = lang === 'ru' ? 'en' : 'ru'; applyLang(); });
+$('btnHelp').addEventListener('click', () => $('help').classList.add('open'));
+$('btnHelpClose').addEventListener('click', () => $('help').classList.remove('open'));
+
+// ============================== BLE ==============================
 const UUID = {
   service:  '7a3f0001-5b2c-4e8d-9f10-c0ffee000001',
   sample:   '7a3f0002-5b2c-4e8d-9f10-c0ffee000001',
   spectrum: '7a3f0003-5b2c-4e8d-9f10-c0ffee000001',
   nets:     '7a3f0004-5b2c-4e8d-9f10-c0ffee000001',
 };
-const $ = id => document.getElementById(id);
-const log = m => { const el = $('log'); el.textContent = (m + '\n' + el.textContent).slice(0, 3000); };
-
-// ============================== BLE ==============================
 let chNets = null, netsMeta = new Map(), latest = new Map(), selected = null;
 let busy = 0, pktCount = 0;
+let listOrder = [];          // стабильный порядок строк; меняется только по кнопке
+
+const log = m => { const el = $('log'); el.textContent = (m + '\n' + el.textContent).slice(0, 3000); };
 
 async function connectBle() {
-  if (!navigator.bluetooth) { $('stat').textContent = 'Web Bluetooth недоступен: нужен Chrome на Android + HTTPS'; return; }
+  if (!navigator.bluetooth) { $('stat').textContent = t('stNoBt'); return; }
   try {
-    $('btnBle').disabled = true; $('stat').textContent = 'поиск…';
+    $('btnBle').disabled = true; $('stat').textContent = t('stSearch');
     const dev = await navigator.bluetooth.requestDevice({ filters: [{ services: [UUID.service] }] });
     dev.addEventListener('gattserverdisconnected', () => {
-      $('stat').textContent = 'BLE отключён'; $('btnBle').disabled = false;
-      $('btnBle').textContent = 'Переподключить'; chNets = null;
+      $('stat').textContent = 'BLE ✕'; $('btnBle').disabled = false;
+      $('btnBle').textContent = t('bReconnect'); chNets = null;
     });
     const svc = await (await dev.gatt.connect()).getPrimaryService(UUID.service);
     const chSample = await svc.getCharacteristic(UUID.sample);
@@ -133,8 +286,9 @@ async function connectBle() {
     await refreshNets();
     setInterval(refreshNets, 2000);
     $('stat').textContent = 'BLE: ' + dev.name;
+    $('btnBle').textContent = t('bReconnect');
     log('connected ' + dev.name);
-  } catch (e) { $('stat').textContent = 'ошибка: ' + e.message; $('btnBle').disabled = false; }
+  } catch (e) { $('stat').textContent = 'error: ' + e.message; $('btnBle').disabled = false; }
 }
 
 function onSample(ev) {
@@ -144,10 +298,11 @@ function onSample(ev) {
   const n = v.getUint8(3);
   latest.clear();
   for (let i = 0; i < n; i++) latest.set(v.getUint8(4 + 2 * i), v.getInt8(5 + 2 * i));
-  if (selected === null && n) selected = v.getUint8(4);
-  const r = latest.get(selected);
-  $('rssi').textContent = (r === undefined) ? '–' : r;
+  if (selected === null && n) selected = v.getUint8(4);       // первый раз — сильнейший
+  // новые idx дописываем в конец, порядок существующих не трогаем
+  for (const idx of latest.keys()) if (!listOrder.includes(idx)) listOrder.push(idx);
   $('busy').textContent = busy;
+  renderSelected();
 }
 
 function onSpectrum(ev) {
@@ -163,6 +318,22 @@ async function refreshNets() {
   } catch (e) { /* рваный пакет — ждём следующего */ }
 }
 
+const netName = idx => {
+  const m = netsMeta.get(idx) || {};
+  return m.s || (m.m ? t('device') + ' ' + m.m.slice(-5) : 'idx ' + idx);
+};
+
+function renderSelected() {
+  const r = selected === null ? undefined : latest.get(selected);
+  $('rssi').textContent = (r === undefined) ? '–' : r;
+  $('arRssi').textContent = (r === undefined) ? '–' : r;
+  const nm = selected === null ? t('selNone') : netName(selected);
+  $('selName').textContent = nm;
+  $('arName').textContent = nm;
+  const m = (selected !== null && netsMeta.get(selected)) || {};
+  $('selSub').textContent = (m.m || '') + (m.c ? ' · ch ' + m.c : '');
+}
+
 // ---------- водопад ----------
 const wf = $('wf'), wctx = wf.getContext('2d');
 wctx.fillStyle = '#05070b'; wctx.fillRect(0, 0, wf.width, wf.height);
@@ -173,25 +344,33 @@ function pushRow(bits) {
   for (let ch = 0; ch < 126; ch++) if (bits[ch >> 3] & (1 << (ch & 7))) wctx.fillRect(ch, 0, 1, 1);
 }
 
-// ---------- список сетей ----------
+// ---------- список сетей: порядок стабильный ----------
 function renderNets() {
-  const rows = [...latest.entries()].sort((a, b) => b[1] - a[1]);
-  $('netlist').innerHTML = rows.map(([idx, rssi]) => {
+  const rows = listOrder.filter(i => latest.has(i));
+  $('netlist').innerHTML = rows.map(idx => {
+    const rssi = latest.get(idx);
     const m = netsMeta.get(idx) || {};
-    const name = m.s || (m.m ? 'устройство ' + m.m.slice(-5) : 'idx ' + idx);
     const sub = (m.m || '') + (m.c ? ' · ch ' + m.c : '');
     const pct = Math.max(0, Math.min(100, (rssi + 100) / 70 * 100));
-    return `<div class="${idx === selected ? 'sel' : ''}" data-idx="${idx}">
-      <div class="nm"><span>${name}</span><span class="muted">${sub}</span></div>
+    return `<div class="row ${idx === selected ? 'sel' : ''}" data-idx="${idx}">
+      <div class="nm"><span>${netName(idx)}</span><span class="muted">${sub}</span></div>
       <div class="bar"><i style="width:${pct}%"></i></div>
-      <div class="rs">${rssi}</div></div>`;
+      <div class="rs mono">${rssi}</div></div>`;
   }).join('');
 }
 $('netlist').addEventListener('click', e => {
   const el = e.target.closest('[data-idx]');
   if (!el) return;
-  selected = +el.dataset.idx;
-  points.length = 0; estimate = null; rebuildCloud(); renderNets();
+  const idx = +el.dataset.idx;
+  if (idx === selected) return;
+  selected = idx;
+  points.length = 0; estimate = null; rebuildCloud();
+  renderSelected(); renderNets();
+});
+// пересортировка — разовая, по кнопке, чтобы список не прыгал сам
+$('btnSort').addEventListener('click', () => {
+  listOrder = [...listOrder].sort((a, b) => (latest.get(b) ?? -127) - (latest.get(a) ?? -127));
+  renderNets();
 });
 
 // ============================== three.js / AR ==============================
@@ -204,35 +383,31 @@ document.body.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.01, 40);
-scene.add(new THREE.HemisphereLight(0xffffff, 0x223344, 1.2));
 
 const rssiColor = r => new THREE.Color().setHSL(Math.max(0, Math.min(1, (r + 90) / 60)) * 0.33, 0.9, 0.55);
 
-// Всё содержимое висит в этой группе. Её поза берётся от XR-якоря,
-// поэтому при перелокализации ARCore облако остаётся на месте в комнате.
+// Группа привязана к XR-якорю: при перелокализации ARCore облако остаётся на месте.
 const world = new THREE.Group();
 world.matrixAutoUpdate = false;
 scene.add(world);
 
-// --- мягкая «дымка»: спрайты с радиальным градиентом, аддитивное смешивание ---
 function puffTexture() {
   const s = 128, c = document.createElement('canvas');
   c.width = c.height = s;
-  const g = c.getContext('2d').createRadialGradient(s/2, s/2, 0, s/2, s/2, s/2);
+  const ctx = c.getContext('2d');
+  const g = ctx.createRadialGradient(s/2, s/2, 0, s/2, s/2, s/2);
   g.addColorStop(0.0, 'rgba(255,255,255,1)');
   g.addColorStop(0.25, 'rgba(255,255,255,0.45)');
   g.addColorStop(0.6, 'rgba(255,255,255,0.10)');
   g.addColorStop(1.0, 'rgba(255,255,255,0)');
-  const ctx = c.getContext('2d');
   ctx.fillStyle = g; ctx.fillRect(0, 0, s, s);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
 }
 
-const MAX_PTS = 500;      // измерений
-const PUFFS = 3;          // облачков на измерение — даёт объём вместо горошины
-const points = [];        // {pos: Vector3 (в координатах world), rssi}
+const MAX_PTS = 500, PUFFS = 3, STEP_M = 0.15;
+const points = [];
 
 const hazeGeo = new THREE.BufferGeometry();
 const hazePos = new Float32Array(MAX_PTS * PUFFS * 3);
@@ -243,7 +418,6 @@ hazeGeo.setAttribute('color', new THREE.BufferAttribute(hazeCol, 3));
 hazeGeo.setAttribute('size', new THREE.BufferAttribute(hazeSize, 1));
 hazeGeo.setDrawRange(0, 0);
 
-// Свой шейдер: нужен разный размер у каждого спрайта (у PointsMaterial он общий).
 const hazeMat = new THREE.ShaderMaterial({
   uniforms: { map: { value: puffTexture() }, uOpacity: { value: 0.5 } },
   vertexShader: `
@@ -260,13 +434,11 @@ const hazeMat = new THREE.ShaderMaterial({
     uniform float uOpacity;
     varying vec3 vColor;
     void main() {
-      vec4 t = texture2D(map, gl_PointCoord);
-      gl_FragColor = vec4(vColor * t.a, t.a * uOpacity);
+      vec4 tx = texture2D(map, gl_PointCoord);
+      gl_FragColor = vec4(vColor * tx.a, tx.a * uOpacity);
     }`,
-  transparent: true,
-  vertexColors: true,
-  blending: THREE.AdditiveBlending,
-  depthWrite: false,
+  transparent: true, vertexColors: true,
+  blending: THREE.AdditiveBlending, depthWrite: false,
 });
 const haze = new THREE.Points(hazeGeo, hazeMat);
 haze.frustumCulled = false;
@@ -277,13 +449,12 @@ function rebuildCloud() {
   let k = 0;
   for (const p of points) {
     _c.copy(rssiColor(p.rssi));
-    // сильный сигнал — крупнее и плотнее, слабый — мелкая редкая дымка
     const strength = Math.max(0, Math.min(1, (p.rssi + 90) / 60));
     for (let j = 0; j < PUFFS; j++) {
-      hazePos[k * 3]     = p.pos.x + p.jit[j * 3];
-      hazePos[k * 3 + 1] = p.pos.y + p.jit[j * 3 + 1];
-      hazePos[k * 3 + 2] = p.pos.z + p.jit[j * 3 + 2];
-      hazeCol[k * 3]     = _c.r; hazeCol[k * 3 + 1] = _c.g; hazeCol[k * 3 + 2] = _c.b;
+      hazePos[k*3] = p.pos.x + p.jit[j*3];
+      hazePos[k*3+1] = p.pos.y + p.jit[j*3+1];
+      hazePos[k*3+2] = p.pos.z + p.jit[j*3+2];
+      hazeCol[k*3] = _c.r; hazeCol[k*3+1] = _c.g; hazeCol[k*3+2] = _c.b;
       hazeSize[k] = 0.22 + strength * 0.5;
       k++;
     }
@@ -292,22 +463,21 @@ function rebuildCloud() {
   hazeGeo.attributes.position.needsUpdate = true;
   hazeGeo.attributes.color.needsUpdate = true;
   hazeGeo.attributes.size.needsUpdate = true;
-  $('pts').textContent = points.length + ' точек';
+  $('pts').textContent = points.length;
+  $('arPts').textContent = points.length;
 }
 
 let estimate = null, waveOn = false;
-const waves = [0, 1, 2, 3].map(() => {
+const waves = [0,1,2,3].map(() => {
   const m = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 20),
     new THREE.MeshBasicMaterial({ color: 0x7fe3ff, transparent: true, opacity: .1,
-                                  side: THREE.BackSide, depthWrite: false,
-                                  blending: THREE.AdditiveBlending }));
+      side: THREE.BackSide, depthWrite: false, blending: THREE.AdditiveBlending }));
   m.visible = false; world.add(m); return m;
 });
 const srcMark = new THREE.Mesh(new THREE.SphereGeometry(0.07, 16, 12),
   new THREE.MeshBasicMaterial({ color: 0xffd166, transparent: true, opacity: .9 }));
 srcMark.visible = false; world.add(srcMark);
 
-// Взвешенный центроид: вес ~ амплитуда поля, оценка тянется к сильным точкам.
 function estimateSource() {
   if (points.length < 12) return null;
   let w = 0; const acc = new THREE.Vector3();
@@ -321,16 +491,15 @@ $('btnWave').addEventListener('click', () => {
   if (waveOn) estimate = estimateSource();
   waves.forEach(w => w.visible = waveOn && !!estimate);
   srcMark.visible = waveOn && !!estimate;
-  if (waveOn && !estimate) $('stat').textContent = 'мало точек — походи ещё';
+  if (waveOn && !estimate) $('arName').textContent = t('stFewPts');
 });
 $('btnClear').addEventListener('click', () => { points.length = 0; estimate = null; rebuildCloud(); });
 
 const lastPos = new THREE.Vector3(1e9, 1e9, 1e9);
 function maybeRecord(pWorld) {
-  const r = latest.get(selected);
-  if (r === undefined || pWorld.distanceTo(lastPos) < 0.15) return;
+  const r = selected === null ? undefined : latest.get(selected);
+  if (r === undefined || pWorld.distanceTo(lastPos) < STEP_M) return;
   lastPos.copy(pWorld);
-  // в локальные координаты группы-якоря, чтобы точка пережила перелокализацию
   const local = world.worldToLocal(pWorld.clone());
   const jit = new Float32Array(PUFFS * 3);
   for (let i = 0; i < PUFFS * 3; i++) jit[i] = (Math.random() - 0.5) * 0.14;
@@ -339,29 +508,26 @@ function maybeRecord(pWorld) {
   rebuildCloud();
 }
 
-// --- запуск сессии: одна конфигурация на клик (активация жеста тратится сразу) ---
 const AR_CONFIGS = [
   ['overlay', () => ({ optionalFeatures: ['local-floor', 'dom-overlay', 'anchors'], domOverlay: { root: $('ui') } })],
   ['floor',   () => ({ optionalFeatures: ['local-floor', 'anchors'] })],
   ['bare',    () => undefined],
 ];
-let cfgIndex = 0, xrSession = null;
-let anchor = null, anchorPending = false;
+let cfgIndex = 0, xrSession = null, anchor = null, anchorPending = false;
 
 $('btnAr').addEventListener('click', () => {
-  if (!navigator.xr) { $('stat').textContent = 'navigator.xr нет — нужен Chrome на Android по HTTPS'; return; }
+  if (!navigator.xr) { $('stat').textContent = t('stNoXr'); return; }
   const [name, mk] = AR_CONFIGS[cfgIndex % AR_CONFIGS.length];
   const opts = mk();
-  $('stat').textContent = 'запуск AR: ' + name;
   const p = opts ? navigator.xr.requestSession('immersive-ar', opts)
                  : navigator.xr.requestSession('immersive-ar');
-  p.then(s => { log('AR OK: ' + name); startSession(s, name); })
+  p.then(s => { log('AR ok: ' + name); startSession(s, name); })
    .catch(err => {
-     log('AR FAIL ' + name + ': ' + err.name);
+     log('AR fail ' + name + ': ' + err.name);
      cfgIndex++;
      const next = AR_CONFIGS[cfgIndex % AR_CONFIGS.length][0];
-     $('stat').textContent = name + ' не принят — нажми ещё раз (' + next + ')';
-     $('btnAr').textContent = 'В AR → ' + next;
+     $('stat').textContent = name + ' ✕ — ' + t('bAr') + ' → ' + next;
+     $('btnAr').textContent = t('bAr') + ' → ' + next;
    });
 });
 
@@ -373,13 +539,13 @@ async function startSession(session, cfg) {
     await renderer.xr.setSession(session);
     xrSession = session;
     document.body.classList.add('ar');
-    $('stat').textContent = 'AR (' + cfg + '/' + space + ')' + (chNets ? '' : ' — без BLE, точки не пишутся');
+    log('AR: ' + cfg + '/' + space + (chNets ? '' : t('stNoBle')));
     session.addEventListener('end', () => {
       xrSession = null; anchor = null; anchorPending = false;
       document.body.classList.remove('ar');
-      $('stat').textContent = chNets ? 'BLE подключён' : 'не подключено';
+      $('stat').textContent = chNets ? 'BLE ✓' : t('stIdle');
     });
-  } catch (err) { $('stat').textContent = 'setSession: ' + err.name + ' — ' + err.message; }
+  } catch (err) { $('stat').textContent = 'setSession: ' + err.name; }
 }
 $('btnExit').addEventListener('click', () => xrSession && xrSession.end());
 
@@ -387,37 +553,27 @@ const camPos = new THREE.Vector3();
 const anchorMat = new THREE.Matrix4();
 let waveT = 0, lostShown = false;
 
-renderer.setAnimationLoop((t, frame) => {
+renderer.setAnimationLoop((time, frame) => {
   if (frame) {
     const refSpace = renderer.xr.getReferenceSpace();
     const viewerPose = frame.getViewerPose(refSpace);
 
-    // Якорь: создаём один раз, дальше каждый кадр берём его позу.
-    // ARCore корректирует её при перелокализации — облако не уплывает.
     if (!anchor && !anchorPending && frame.createAnchor && viewerPose) {
       anchorPending = true;
       frame.createAnchor(new XRRigidTransform(), refSpace)
         .then(a => { anchor = a; log('anchor: ok'); })
-        .catch(e => { log('anchor: недоступен (' + e.name + ') — облако может смещаться'); });
+        .catch(e => log('anchor: n/a (' + e.name + ')'));
     }
     if (anchor) {
       const ap = frame.getPose(anchor.anchorSpace, refSpace);
-      if (ap) {
-        anchorMat.fromArray(ap.transform.matrix);
-        world.matrix.copy(anchorMat);
-        world.matrixWorldNeedsUpdate = true;   // matrixAutoUpdate выключен — обновляем сами
-      }
+      if (ap) { anchorMat.fromArray(ap.transform.matrix); world.matrix.copy(anchorMat); world.matrixWorldNeedsUpdate = true; }
     }
 
-    // Трекинг потерян — не пишем мусорные точки.
     if (viewerPose) {
-      if (lostShown) { $('stat').textContent = 'трекинг восстановлен'; lostShown = false; }
+      if (lostShown) { lostShown = false; renderSelected(); }
       renderer.xr.getCamera().getWorldPosition(camPos);
       maybeRecord(camPos);
-    } else if (!lostShown) {
-      $('stat').textContent = 'трекинг потерян — веди камеру плавно';
-      lostShown = true;
-    }
+    } else if (!lostShown) { $('arName').textContent = t('stLost'); lostShown = true; }
   }
 
   if (waveOn && estimate) {
@@ -427,7 +583,7 @@ renderer.setAnimationLoop((t, frame) => {
       const ph = (waveT + i / waves.length) % 1;
       w.position.copy(estimate);
       w.scale.setScalar(0.2 + ph * 3.6);
-      w.material.opacity = 0.13 * Math.sin(Math.PI * ph);   // плавное появление и угасание
+      w.material.opacity = 0.13 * Math.sin(Math.PI * ph);
     });
   }
   renderer.render(scene, camera);
@@ -438,13 +594,12 @@ addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
-// ---------- диагностика окружения ----------
 (function diag() {
   const ua = navigator.userAgent;
   const inApp = /; wv\)/.test(ua) || /(FBAN|FBAV|Instagram|Line|Telegram|WhatsApp|SamsungBrowser|MiuiBrowser|YaBrowser)/i.test(ua);
   log('secure: ' + isSecureContext + ' | ' + location.protocol + '//' + location.hostname);
-  log('xr: ' + (navigator.xr ? 'есть' : 'НЕТ') + ' | bluetooth: ' + (navigator.bluetooth ? 'есть' : 'НЕТ')
-      + ' | встроенный браузер: ' + (inApp ? 'ДА — открой в Chrome' : 'нет'));
+  log('xr: ' + (navigator.xr ? 'yes' : 'NO') + ' | bluetooth: ' + (navigator.bluetooth ? 'yes' : 'NO')
+      + ' | in-app browser: ' + (inApp ? 'YES — open in Chrome' : 'no'));
   if (navigator.xr) navigator.xr.isSessionSupported('immersive-ar')
     .then(ok => log('isSessionSupported(immersive-ar): ' + ok))
     .catch(e => log('isSessionSupported: ' + e.name));
@@ -452,6 +607,7 @@ addEventListener('resize', () => {
 
 $('btnBle').addEventListener('click', connectBle);
 setInterval(() => { $('rate').textContent = pktCount; pktCount = 0; renderNets(); }, 1000);
+applyLang();
 </script>
 </body>
 </html>
